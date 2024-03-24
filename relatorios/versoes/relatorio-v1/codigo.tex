@@ -1,0 +1,85 @@
+\section{Códigos}
+	\subsection{Código em Linguagem Arduino}
+	\begin{minted}
+		[
+		frame=lines,
+		framesep=2mm,
+		tabsize=3,
+		breaklines=true,
+		baselinestretch=1.2,
+		fontsize=\scriptsize,
+		linenos
+		]{C}
+		
+		// Cálculos usados para calcular média
+		long media_sensores;
+		int somatorio_sensores;
+		
+		// Posicao do veículo
+		int posicao;
+		
+		int quant_sensores = 6;
+		long sensores[]    = {0, 0, 0, 0, 0, 0};
+		
+		void setup(){
+			Serial.begin(9600);
+		}
+		
+		void loop(){
+			leitura_sensores();                      // Reads sensor values and computes sensor sum and weighted average
+			calculo_proporcao();                     //Calculates posicao[set point] and computes Kp,Ki and Kd
+			calculo_giro();                          //Computes the error to be corrected
+			atuacao_motor(velocidade_direito, velocidade_esquerdo);  //Sends PWM signals to the motors
+		}
+	
+		void leitura_sensores() {
+			media_sensores     = 0;
+			somatorio_sensores = 0;
+			for (int i = 0; i < quant_sensores; i++){
+				sensores[i] = analogRead(i);
+				
+				media_sensores += sensores[i] * i * 1000;     //Calculating the weighted mean of the sensor readings.
+				somatorio_sensores += int(sensores[i]);       //Calculating sum of sensor readings.
+				
+			}
+		}
+	
+		void calculo_proporcao(){
+			posicao   = int(media_sensores / somatorio_sensores);
+			proporcao = posicao – posicao_perfeita;      // Replace posicao_perfeita by your set point
+			integral  = integral + proporcao;
+			derivada  = proporcao - ultima_proporcao;
+			ultima_proporcao = proporcao;
+			
+			valor_erro = int(proporcao * Kp + integral * Ki + derivada * Kd);
+		}
+	
+		
+		void calculo_giro(){  //Restricting the error value between +256.
+			if (valor_erro< -256){ valor_erro = -256;     } if (valor_erro> 256){
+				valor_erro = 256;
+			}
+			
+			// If valor_erro is less than zero calculate right turn speed values
+			if (valor_erro< 0){
+				velocidade_direito  = velocidade_maxima + valor_erro;
+				velocidade_esquerdo = velocidade_maxima;
+			}
+			
+			// Ifvalor_erro is greater than zero calculate left turn values
+			
+			else{
+				velocidade_direito  = velocidade_maxima;
+				velocidade_esquerdo = velocidade_maxima - valor_erro;
+			}
+		}
+	
+	
+		void atuacao_motor(intvelocidade_direito, intvelocidade_esquerdo){
+			// Drive motors according to the calculated values for a turn
+			analogWrite(motor_direito, velocidade_direito);
+			analogWrite(motor_esquerdo, velocidade_esquerdo);
+			delay(60);
+		}
+		
+	\end{minted}

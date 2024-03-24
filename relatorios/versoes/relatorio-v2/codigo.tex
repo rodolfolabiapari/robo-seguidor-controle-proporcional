@@ -1,0 +1,273 @@
+\section{Códigos}
+	\subsection{Código em Linguagem Lua}
+	\subsubsection{init.lua}
+		\begin{minted}
+			[
+			frame=lines,
+			framesep=2mm,
+			tabsize=3,
+			breaklines=true,
+			baselinestretch=1.2,
+			fontsize=\scriptsize,
+			linenos
+			]{lua}
+print("\n")
+print("ESP8266 Started")
+
+local exefile="sta"
+local luaFile = {exefile..".lua","yun.lua"}
+for i, f in ipairs(luaFile) do
+	if file.open(f) then
+		file.close()
+		print("Compile File:"..f)
+		node.compile(f)
+		print("Remove File:"..f)
+		file.remove(f)
+	end
+end
+
+if file.open(exefile..".lc") then
+	dofile(exefile..".lc")
+else
+	print(exefile..".lc not exist")
+end
+
+exefile=nil;luaFile = nil
+collectgarbage()
+		\end{minted}
+
+		\subsubsection{sta.lua}
+			\begin{minted}
+				[
+				frame=lines,
+				framesep=2mm,
+				tabsize=3,
+				breaklines=true,
+				baselinestretch=1.2,
+				fontsize=\scriptsize,
+				linenos
+				]{lua}
+print("Ready to Set up wifi mode")
+wifi.setmode(wifi.STATION)
+local ssid = "MERCURY_1013"
+local psw = "123456789"
+print("Conneting to "..ssid)
+wifi.sta.config(ssid,psw)--ssid and password
+wifi.sta.connect()
+local cnt = 0
+gpio.mode(0,gpio.OUTPUT);
+tmr.alarm(3, 1000, 1, function()
+	if (wifi.sta.getip() == nil) and (cnt < 20) then
+		print("->")
+		cnt = cnt + 1
+		if cnt % 2 ==1 then
+			gpio.write(0,gpio.HIGH);
+		else
+			gpio.write(0,gpio.LOW);
+		end
+	else
+		tmr.stop(3)
+		if (cnt < 20) then
+			print("Config done, IP is "..wifi.sta.getip())
+			cnt = nil;ssid=nil;psw=nil;
+			collectgarbage();
+			if file.open("yun.lc") then
+				dofile("yun.lc")
+			else
+				print("yun.lc not exist")
+			end
+		else
+			print("Wifi setup time more than 20s, Pls verify\r\nssid:"..ssid.." psw:"..psw.."\r\nThen re-download the file.")
+			cnt=cnt+1;
+			tmr.alarm(1, 300, 1, function()
+				if cnt % 2 ==1 then
+					gpio.write(0,gpio.HIGH);
+				else
+					gpio.write(0,gpio.LOW);
+				end
+			end)
+		end
+	end
+end)
+			\end{minted}
+
+			\subsubsection{yun.lua}
+				\begin{minted}
+					[
+					frame=lines,
+					framesep=2mm,
+					tabsize=3,
+					breaklines=true,
+					baselinestretch=1.2,
+					fontsize=\scriptsize,
+					linenos
+					]{lua}
+--yun coding demo
+--Created @ 2015/05/27 by Doit Studio
+--Modified: null
+--http://www.doit.am/
+--http://www.smartarduino.com/
+--http://szdoit.taobao.com/
+--bbs: bbs.doit.am
+
+print("Start yun")
+
+gpio.mode(0,gpio.OUTPUT);--LED Light on
+gpio.write(0,gpio.LOW);
+
+local deviceID = "doitCar"
+local timeTickCnt = 0
+local fileName = "yunRemote"
+local conn;
+local flagClientTcpConnected=false;
+print("Start TCP Client");
+tmr.alarm(3, 5000, 1, function()
+	if flagClientTcpConnected==true then
+		timeTickCnt = timeTickCnt + 1;
+		if timeTickCnt>=60 then --every 300 seconds send "cmd=keep\r\n" to server
+			timeTickCnt = 0;
+			conn:send("cmd=keep\r\n");
+		end
+	elseif flagClientTcpConnected==false then
+	print("Try connect Server");
+	conn=net.createConnection(net.TCP, false)
+	conn:connect(7500,"198.199.94.16");
+		conn:on("connection",function(c)
+			print("TCPClient:conneted to server");
+			conn:send("cmd=subscribe&topic="..deviceID.."\r\n");
+			flagClientTcpConnected = true;timeTickCnt = 0;
+		end) --connection
+		conn:on("disconnection",function(c)
+			flagClientTcpConnected = false;
+			conn=nil;collectgarbage();
+		end) --disconnection
+		conn:on("receive", function(conn, m)
+			if string.sub(m,1,5)=="__B__" then
+				file.remove(fileName..".lua")
+				file.open(fileName..".lua", "w" )
+				conn:send("cmd=next\r\n");--start fetching prog file
+			elseif string.sub(m,1,5)=="__E__" then --finish fetching
+				file.close()
+				collectgarbage();
+				node.compile(fileName..".lua");
+				file.remove(fileName..".lua");
+				dofile(fileName..".lc")
+			else --the file context
+				print("Recieve:"..m)
+				file.writeline(m);
+				conn:send("cmd=next\r\n");--continue fetching
+			end
+			collectgarbage();
+		end)--receive
+	end
+end)
+				\end{minted}
+
+				\subsubsection{cloud}
+					\begin{minted}
+						[
+						frame=lines,
+						framesep=2mm,
+						tabsize=3,
+						breaklines=true,
+						baselinestretch=1.2,
+						fontsize=\scriptsize,
+						linenos
+						]{c}
+print("start flash led")
+cnt = 10
+while cnt>0 do
+	gpio.write(0,gpio.LOW)
+	tmr.delay(1000*1000) --1second
+	gpio.write(0,gpio.HIGH)
+	tmr.delay(1000*1000)--1second
+	cnt = cnt - 1;
+end
+print("yun demo finish!")
+					\end{minted}
+
+
+	\subsection{Código em Linguagem Arduino}
+	\begin{minted}
+		[
+		frame=lines,
+		framesep=2mm,
+		tabsize=3,
+		breaklines=true,
+		baselinestretch=1.2,
+		fontsize=\scriptsize,
+		linenos
+		]{C}
+
+// Cálculos usados para calcular média
+long media_sensores;
+int somatorio_sensores;
+
+// Posicao do veículo
+int posicao;
+
+int quant_sensores = 6;
+long sensores[]    = {0, 0, 0, 0, 0, 0};
+
+void setup(){
+	Serial.begin(9600);
+}
+
+void loop(){
+	leitura_sensores();                      // Reads sensor values and computes sensor sum and weighted average
+	calculo_proporcao();                     //Calculates posicao[set point] and computes Kp,Ki and Kd
+	calculo_giro();                          //Computes the error to be corrected
+	atuacao_motor(velocidade_direito, velocidade_esquerdo);  //Sends PWM signals to the motors
+}
+
+void leitura_sensores() {
+	media_sensores     = 0;
+	somatorio_sensores = 0;
+	for (int i = 0; i < quant_sensores; i++){
+		sensores[i] = analogRead(i);
+
+		media_sensores += sensores[i] * i * 1000;     //Calculating the weighted mean of the sensor readings.
+		somatorio_sensores += int(sensores[i]);       //Calculating sum of sensor readings.
+
+	}
+}
+
+void calculo_proporcao(){
+	posicao   = int(media_sensores / somatorio_sensores);
+	proporcao = posicao – posicao_perfeita;      // Replace posicao_perfeita by your set point
+	integral  = integral + proporcao;
+	derivada  = proporcao - ultima_proporcao;
+	ultima_proporcao = proporcao;
+
+	valor_erro = int(proporcao * Kp + integral * Ki + derivada * Kd);
+}
+
+
+void calculo_giro(){  //Restricting the error value between +256.
+	if (valor_erro< -256){ valor_erro = -256;     } if (valor_erro> 256){
+		valor_erro = 256;
+	}
+
+	// If valor_erro is less than zero calculate right turn speed values
+	if (valor_erro< 0){
+		velocidade_direito  = velocidade_maxima + valor_erro;
+		velocidade_esquerdo = velocidade_maxima;
+	}
+
+	// Ifvalor_erro is greater than zero calculate left turn values
+
+	else{
+		velocidade_direito  = velocidade_maxima;
+		velocidade_esquerdo = velocidade_maxima - valor_erro;
+	}
+}
+
+
+void atuacao_motor(intvelocidade_direito, intvelocidade_esquerdo){
+	// Drive motors according to the calculated values for a turn
+	analogWrite(motor_direito, velocidade_direito);
+	analogWrite(motor_esquerdo, velocidade_esquerdo);
+	delay(60);
+}
+
+	\end{minted}
